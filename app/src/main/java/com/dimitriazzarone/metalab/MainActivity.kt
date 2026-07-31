@@ -40,8 +40,8 @@ class MainActivity : ComponentActivity() {
                     contract = ActivityResultContracts.RequestMultiplePermissions()
                 ) { results ->
                     PermissionResultBus.onBothResult(
-                        microphoneGranted = results[Manifest.permission.RECORD_AUDIO] == true,
-                        cameraGranted = results[Manifest.permission.CAMERA] == true
+                        results[Manifest.permission.RECORD_AUDIO] == true,
+                        results[Manifest.permission.CAMERA] == true
                     )
                 }
 
