@@ -58,6 +58,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dimitriazzarone.metalab.PermissionResultBus
 import com.dimitriazzarone.metalab.R
+import com.dimitriazzarone.metalab.data.SessionRecord
+import com.dimitriazzarone.metalab.data.SessionStore
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import com.dimitriazzarone.metalab.resolvePermissionStatus
 
 private const val QUESTION_LIMIT = 500
@@ -78,6 +83,11 @@ fun MetaLabApp(
     openAppSettings: () -> Unit
 ) {
     var question by rememberSaveable { mutableStateOf("") }
+    var transcript by rememberSaveable { mutableStateOf("") }
+    var finalNote by rememberSaveable { mutableStateOf("") }
+    val sessionStore = remember(activity) { SessionStore(activity) }
+    var sessions by remember { mutableStateOf(sessionStore.load()) }
+    var storageMessage by remember { mutableStateOf<String?>(null) }
     var microphoneRequested by rememberSaveable { mutableStateOf(false) }
     var cameraRequested by rememberSaveable { mutableStateOf(false) }
     var permissionRefresh by rememberSaveable { mutableIntStateOf(0) }
@@ -155,6 +165,47 @@ fun MetaLabApp(
                         question = question,
                         onQuestionChange = { question = it.take(QUESTION_LIMIT) },
                         onClear = { question = "" }
+                    )
+                    SessionEditorPanel(
+                        transcript = transcript,
+                        finalNote = finalNote,
+                        storageMessage = storageMessage,
+                        canSave = question.isNotBlank() ||
+                            transcript.isNotBlank() ||
+                            finalNote.isNotBlank(),
+                        onTranscriptChange = {
+                            transcript = it
+                            storageMessage = null
+                        },
+                        onFinalNoteChange = {
+                            finalNote = it
+                            storageMessage = null
+                        },
+                        onSave = {
+                            val record = SessionRecord(
+                                question = question.trim(),
+                                transcript = transcript.trim(),
+                                detectedQuestions = detectQuestions(
+                                    question = question,
+                                    transcript = transcript
+                                ),
+                                finalNote = finalNote.trim()
+                            )
+                            sessionStore.append(record)
+                            sessions = sessionStore.load()
+                            question = ""
+                            transcript = ""
+                            finalNote = ""
+                            storageMessage = "Sessione salvata."
+                        }
+                    )
+                    SessionArchivePanel(
+                        sessions = sessions,
+                        onDelete = { id ->
+                            sessionStore.delete(id)
+                            sessions = sessionStore.load()
+                            storageMessage = "Sessione eliminata."
+                        }
                     )
                     PermissionPanel(
                         microphoneStatus = microphoneStatus,
@@ -286,6 +337,141 @@ private fun QuestionPanel(
         }
     }
 }
+
+@Composable
+private fun SessionEditorPanel(
+    transcript: String,
+    finalNote: String,
+    storageMessage: String?,
+    canSave: Boolean,
+    onTranscriptChange: (String) -> Unit,
+    onFinalNoteChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    SectionCard(title = "Sessione", icon = Icons.Default.GraphicEq) {
+        OutlinedTextField(
+            value = transcript,
+            onValueChange = onTranscriptChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 150.dp),
+            label = { Text("Trascrizione") },
+            placeholder = {
+                Text("La trascrizione vocale verrà collegata nel prossimo blocco.")
+            },
+            minLines = 4,
+            maxLines = 10
+        )
+        OutlinedTextField(
+            value = finalNote,
+            onValueChange = onFinalNoteChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 100.dp),
+            label = { Text("Nota finale") },
+            minLines = 3,
+            maxLines = 6
+        )
+        Button(
+            onClick = onSave,
+            enabled = canSave,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp)
+        ) {
+            Text("Salva sessione con data e ora")
+        }
+        storageMessage?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun SessionArchivePanel(
+    sessions: List<SessionRecord>,
+    onDelete: (String) -> Unit
+) {
+    SectionCard(title = "Archivio sessioni", icon = Icons.Default.Lock) {
+        if (sessions.isEmpty()) {
+            Text(
+                text = "Nessuna sessione salvata.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            sessions.forEach { session ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = formatSessionDate(session.createdAtEpochMillis),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (session.question.isNotBlank()) {
+                            Text("Domanda: ${session.question}")
+                        }
+                        if (session.transcript.isNotBlank()) {
+                            Text("Trascrizione: ${session.transcript}")
+                        }
+                        if (session.detectedQuestions.isNotEmpty()) {
+                            Text(
+                                "Domande rilevate: " +
+                                    session.detectedQuestions.joinToString(" • ")
+                            )
+                        }
+                        if (session.finalNote.isNotBlank()) {
+                            Text("Nota finale: ${session.finalNote}")
+                        }
+                        OutlinedButton(
+                            onClick = { onDelete(session.id) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Elimina sessione")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun detectQuestions(
+    question: String,
+    transcript: String
+): List<String> {
+    val detected = mutableListOf<String>()
+
+    question.trim()
+        .takeIf(String::isNotEmpty)
+        ?.let(detected::add)
+
+    Regex("""[^?]+\?""")
+        .findAll(transcript)
+        .map { it.value.trim() }
+        .filter(String::isNotEmpty)
+        .forEach(detected::add)
+
+    return detected.distinct()
+}
+
+private fun formatSessionDate(epochMillis: Long): String =
+    SESSION_DATE_FORMATTER.format(
+        Instant.ofEpochMilli(epochMillis)
+            .atZone(ZoneId.systemDefault())
+    )
+
+private val SESSION_DATE_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
 
 @Composable
 private fun PermissionPanel(
