@@ -8,8 +8,11 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,6 +48,26 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                val voiceResultHandler = remember {
+                    mutableStateOf<(String) -> Unit>({})
+                }
+
+                val voiceLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == Activity.RESULT_OK) {
+                        val recognizedText = result.data
+                            ?.getStringArrayListExtra(
+                                RecognizerIntent.EXTRA_RESULTS
+                            )
+                            ?.firstOrNull()
+
+                        if (!recognizedText.isNullOrBlank()) {
+                            voiceResultHandler.value(recognizedText)
+                        }
+                    }
+                }
+
                 MetaLabApp(
                     activity = this,
                     requestMicrophone = {
@@ -60,6 +83,26 @@ class MainActivity : ComponentActivity() {
                                 Manifest.permission.CAMERA
                             )
                         )
+                    },
+                    startVoiceRecognition = { onResult ->
+                        voiceResultHandler.value = onResult
+                        val intent = Intent(
+                            RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+                        ).apply {
+                            putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                            )
+                            putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE,
+                                "it-IT"
+                            )
+                            putExtra(
+                                RecognizerIntent.EXTRA_PROMPT,
+                                "Parla per trascrivere"
+                            )
+                        }
+                        voiceLauncher.launch(intent)
                     },
                     openAppSettings = { openApplicationSettings(this) }
                 )

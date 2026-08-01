@@ -80,6 +80,7 @@ fun MetaLabApp(
     requestMicrophone: () -> Unit,
     requestCamera: () -> Unit,
     requestBoth: () -> Unit,
+    startVoiceRecognition: ((String) -> Unit) -> Unit,
     openAppSettings: () -> Unit
 ) {
     var question by rememberSaveable { mutableStateOf("") }
@@ -181,6 +182,7 @@ fun MetaLabApp(
                             finalNote = it
                             storageMessage = null
                         },
+                        onStartVoiceRecognition = startVoiceRecognition,
                         onSave = {
                             val record = SessionRecord(
                                 question = question.trim(),
@@ -346,6 +348,7 @@ private fun SessionEditorPanel(
     canSave: Boolean,
     onTranscriptChange: (String) -> Unit,
     onFinalNoteChange: (String) -> Unit,
+    onStartVoiceRecognition: ((String) -> Unit) -> Unit,
     onSave: () -> Unit
 ) {
     SectionCard(title = "Sessione", icon = Icons.Default.GraphicEq) {
@@ -362,6 +365,28 @@ private fun SessionEditorPanel(
             minLines = 4,
             maxLines = 10
         )
+        OutlinedButton(
+            onClick = {
+                onStartVoiceRecognition { recognizedText ->
+                    transcript = listOf(transcript.trim(), recognizedText.trim())
+                        .filter(String::isNotEmpty)
+                        .joinToString("\n")
+                    storageMessage = null
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Mic,
+                contentDescription = null
+            )
+            Text(
+                text = "Avvia trascrizione vocale",
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
         OutlinedTextField(
             value = finalNote,
             onValueChange = onFinalNoteChange,
