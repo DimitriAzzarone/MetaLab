@@ -368,10 +368,11 @@ private fun SessionEditorPanel(
         OutlinedButton(
             onClick = {
                 onStartVoiceRecognition { recognizedText ->
-                    transcript = listOf(transcript.trim(), recognizedText.trim())
-                        .filter(String::isNotEmpty)
-                        .joinToString("\n")
-                    storageMessage = null
+                    onTranscriptChange(
+                        listOf(transcript.trim(), recognizedText.trim())
+                            .filter(String::isNotEmpty)
+                            .joinToString("\n")
+                    )
                 }
             },
             modifier = Modifier
