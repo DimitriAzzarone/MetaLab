@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dimitriazzarone.metalab.PermissionResultBus
 import com.dimitriazzarone.metalab.R
 import com.dimitriazzarone.metalab.data.SessionRecord
+import com.dimitriazzarone.metalab.audio.AmbientAudioRecorder
 import com.dimitriazzarone.metalab.data.SessionStore
 import java.time.Instant
 import java.time.ZoneId
@@ -87,7 +88,10 @@ fun MetaLabApp(
     var transcript by rememberSaveable { mutableStateOf("") }
     var finalNote by rememberSaveable { mutableStateOf("") }
     val sessionStore = remember(activity) { SessionStore(activity) }
+    val ambientAudioRecorder = remember(activity) { AmbientAudioRecorder(activity) }
     var sessions by remember { mutableStateOf(sessionStore.load()) }
+    var isAmbientRecording by remember { mutableStateOf(false) }
+    var audioFileName by rememberSaveable { mutableStateOf("") }
     var storageMessage by remember { mutableStateOf<String?>(null) }
     var microphoneRequested by rememberSaveable { mutableStateOf(false) }
     var cameraRequested by rememberSaveable { mutableStateOf(false) }
@@ -123,6 +127,7 @@ fun MetaLabApp(
             PermissionResultBus.onMicrophoneResult = {}
             PermissionResultBus.onCameraResult = {}
             PermissionResultBus.onBothResult = { _, _ -> }
+            ambientAudioRecorder.cancel()
         }
     }
 
@@ -183,6 +188,39 @@ fun MetaLabApp(
                             storageMessage = null
                         },
                         onStartVoiceRecognition = startVoiceRecognition,
+                        isAmbientRecording = isAmbientRecording,
+                        audioFileName = audioFileName,
+                        onToggleAmbientRecording = {
+                            if (isAmbientRecording) {
+                                runCatching { ambientAudioRecorder.stop() }
+                                    .onSuccess { savedFileName ->
+                                        audioFileName = savedFileName
+                                        isAmbientRecording = false
+                                        storageMessage = "Registrazione ambientale salvata."
+                                    }
+                                    .onFailure { error ->
+                                        isAmbientRecording = false
+                                        storageMessage = error.message
+                                            ?: "Impossibile fermare la registrazione."
+                                    }
+                            } else if (microphoneStatus != PermissionStatus.GRANTED) {
+                                microphoneRequested = true
+                                requestMicrophone()
+                                storageMessage =
+                                    "Concedi il permesso microfono, poi avvia nuovamente l'ascolto."
+                            } else {
+                                runCatching { ambientAudioRecorder.start() }
+                                    .onSuccess {
+                                        audioFileName = ""
+                                        isAmbientRecording = true
+                                        storageMessage = "Ascolto ambientale in corso."
+                                    }
+                                    .onFailure { error ->
+                                        storageMessage = error.message
+                                            ?: "Impossibile avviare la registrazione."
+                                    }
+                            }
+                        },
                         onSave = {
                             val record = SessionRecord(
                                 question = question.trim(),
@@ -191,13 +229,15 @@ fun MetaLabApp(
                                     question = question,
                                     transcript = transcript
                                 ),
-                                finalNote = finalNote.trim()
+                                finalNote = finalNote.trim(),
+                                audioFileName = audioFileName
                             )
                             sessionStore.append(record)
                             sessions = sessionStore.load()
                             question = ""
                             transcript = ""
                             finalNote = ""
+                            audioFileName = ""
                             storageMessage = "Sessione salvata."
                         }
                     )
@@ -349,6 +389,9 @@ private fun SessionEditorPanel(
     onTranscriptChange: (String) -> Unit,
     onFinalNoteChange: (String) -> Unit,
     onStartVoiceRecognition: ((String) -> Unit) -> Unit,
+    isAmbientRecording: Boolean,
+    audioFileName: String,
+    onToggleAmbientRecording: () -> Unit,
     onSave: () -> Unit
 ) {
     SectionCard(title = "Sessione", icon = Icons.Default.GraphicEq) {
@@ -388,6 +431,33 @@ private fun SessionEditorPanel(
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
+        OutlinedButton(
+            onClick = onToggleAmbientRecording,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Mic,
+                contentDescription = null
+            )
+            Text(
+                text = if (isAmbientRecording) {
+                    "Ferma ascolto ambientale"
+                } else {
+                    "Avvia ascolto ambientale"
+                },
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+
+        if (audioFileName.isNotBlank()) {
+            Text(
+                text = "Audio collegato: $audioFileName",
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
         OutlinedTextField(
             value = finalNote,
             onValueChange = onFinalNoteChange,
