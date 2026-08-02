@@ -12,7 +12,8 @@ data class SessionRecord(
     val question: String,
     val transcript: String,
     val detectedQuestions: List<String>,
-    val finalNote: String
+    val finalNote: String,
+    val audioFileName: String = ""
 )
 
 class SessionStore(context: Context) {
@@ -44,7 +45,8 @@ class SessionStore(context: Context) {
                         question = item.optString(KEY_QUESTION),
                         transcript = item.optString(KEY_TRANSCRIPT),
                         detectedQuestions = questions,
-                        finalNote = item.optString(KEY_FINAL_NOTE)
+                        finalNote = item.optString(KEY_FINAL_NOTE),
+                    audioFileName = item.optString(KEY_AUDIO_FILE_NAME)
                     )
                 )
             }
@@ -77,6 +79,7 @@ class SessionStore(context: Context) {
                     put(KEY_TRANSCRIPT, record.transcript)
                     put(KEY_DETECTED_QUESTIONS, JSONArray(record.detectedQuestions))
                     put(KEY_FINAL_NOTE, record.finalNote)
+                    put(KEY_AUDIO_FILE_NAME, record.audioFileName)
                 }
             )
         }
@@ -103,5 +106,6 @@ class SessionStore(context: Context) {
         const val KEY_TRANSCRIPT = "transcript"
         const val KEY_DETECTED_QUESTIONS = "detectedQuestions"
         const val KEY_FINAL_NOTE = "finalNote"
+        const val KEY_AUDIO_FILE_NAME = "audioFileName"
     }
 }
